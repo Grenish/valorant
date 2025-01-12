@@ -125,7 +125,7 @@ serve({
         // 404 for unmatched routes
         return jsonResponse({ success: false, message: "Endpoint not found" }, 404);
     },
-    port: parseInt(process.env.PORT || "3000"),
+    port: parseInt(process.env.PORT || "5000"),
 });
 
 // Extend globalThis to include `count`
