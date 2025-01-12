@@ -48,6 +48,7 @@ serve({
     async fetch(request) {
         const url = new URL(request.url);
         const path = url.pathname;
+        const query = url.searchParams;
 
         // Home route
         if (path === "/") {
@@ -95,6 +96,19 @@ serve({
             return jsonResponse({ success: true, data: agent });
         }
 
+        // Search for agent by name
+        if (path === "/api/v1/agents/search") {
+            const searchTerm = query.get("q");
+            if (!searchTerm) {
+                return jsonResponse({ success: false, message: "Missing 'q' parameter" }, 400);
+            }
+
+            const filteredAgents = agents.filter((agent) =>
+                agent.name.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+            return jsonResponse({ success: true, data: filteredAgents });
+        }
+
         if (path === "/ping") {
             return new Response("pong");
         }
@@ -109,6 +123,7 @@ serve({
                         "/api/v1/agents/{id}": "Get details of a specific agent by ID",
                         "/api/v1/agents/photos": "Get photos from all agents",
                         "/api/v1/agents/{id}/photos": "Get photos for a specific agent by ID",
+                        "/api/v1/agents/search?q={searchTerm}": "Search for an agent by name",
                         "/ping": "Check if the server is running",
                     },
                     example: {
@@ -116,6 +131,7 @@ serve({
                         single_agent: "/api/v1/agents/1",
                         all_photos: "/api/v1/agents/photos",
                         agent_photos: "/api/v1/agents/1/photos",
+                        search_agent: "/api/v1/agents/search?q=jett",
                         server_ping: "/ping",
                     },
                 },
@@ -128,7 +144,7 @@ serve({
     port: parseInt(process.env.PORT || "5000"),
 });
 
-// Extend globalThis to include `count`
+// Extend globalThis to include count
 declare global {
     var count: number;
 }
