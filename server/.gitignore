@@ -178,5 +178,6 @@ dist
 .env*
 
 agents
+roles
 
 valorant-agents-v2.json
