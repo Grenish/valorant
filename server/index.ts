@@ -113,6 +113,36 @@ serve({
             return new Response("pong");
         }
 
+        // Filter agents by role
+        if (path === "/role/sentinel") {
+            const sentinels = agents.filter((agent) =>
+                agent.roles.some((role) => role.toLowerCase() === "sentinel")
+            );
+            return jsonResponse({ success: true, data: sentinels });
+        }
+
+        if (path === "/role/initiator") {
+            const initiators = agents.filter((agent) =>
+                agent.roles.some((role) => role.toLowerCase() === "initiator")
+            );
+            return jsonResponse({ success: true, data: initiators });
+        }
+
+        if (path === "/role/controller") {
+            const controllers = agents.filter((agent) =>
+                agent.roles.some((role) => role.toLowerCase() === "controller")
+            );
+            return jsonResponse({ success: true, data: controllers });
+        }
+
+        if (path === "/role/duelist") {
+            const duelists = agents.filter((agent) =>
+                agent.roles.some((role) => role.toLowerCase() === "duelist")
+            );
+            return jsonResponse({ success: true, data: duelists });
+        }
+
+
         // Documentation route
         if (path === "/api/v1/docs") {
             return jsonResponse({
@@ -124,6 +154,10 @@ serve({
                         "/api/v1/agents/photos": "Get photos from all agents",
                         "/api/v1/agents/{id}/photos": "Get photos for a specific agent by ID",
                         "/api/v1/agents/search?q={searchTerm}": "Search for an agent by name",
+                        "/role/sentinel": "Get all Sentinel agents",
+                        "/role/initiator": "Get all Initiator agents",
+                        "/role/controller": "Get all Controller agents",
+                        "/role/duelist": "Get all Duelist agents",
                         "/ping": "Check if the server is running",
                     },
                     example: {
@@ -132,11 +166,14 @@ serve({
                         all_photos: "/api/v1/agents/photos",
                         agent_photos: "/api/v1/agents/1/photos",
                         search_agent: "/api/v1/agents/search?q=jett",
+                        sentinels: "/role/sentinel",
+                        duelists: "/role/duelist",
                         server_ping: "/ping",
                     },
                 },
             });
         }
+
 
         // 404 for unmatched routes
         return jsonResponse({ success: false, message: "Endpoint not found" }, 404);
