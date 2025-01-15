@@ -1,5 +1,6 @@
 import { serve } from "bun";
-import { readFile } from "fs/promises";
+import { readFile, writeFile } from "fs/promises";
+import { randomBytes } from "crypto";
 
 interface Agent {
     id: number;
@@ -32,6 +33,37 @@ async function loadAgents() {
     }
 }
 
+// Generate a random API key
+function generateApiKey(): string {
+    return randomBytes(32).toString("hex").toUpperCase();
+}
+
+async function saveApiKey(apiKey: string) {
+    try {
+        const data = await readFile("./api-keys.json", "utf-8");
+        const keys = JSON.parse(data);
+        keys.apiKeys.push(apiKey);
+        await writeFile("./api-keys.json", JSON.stringify(keys, null, 2));
+        console.log("API key saved:", apiKey);
+    } catch (error) {
+        console.error("Failed to save API key:", error);
+    }
+}
+
+// Validate API key
+async function validateApiKey(request: Request): Promise<boolean> {
+    try {
+        const data = await readFile("./api-keys.json", "utf-8");
+        const keys = JSON.parse(data).apiKeys;
+        const apiKey = request.headers.get("x-api-key");
+        return keys.includes(apiKey || "");
+    } catch (error) {
+        console.error("Failed to validate API key:", error);
+        return false;
+    }
+}
+
+// Helper to create JSON responses
 function jsonResponse(data: any, status = 200) {
     return new Response(JSON.stringify(data), {
         status,
@@ -42,13 +74,21 @@ function jsonResponse(data: any, status = 200) {
     });
 }
 
+// Load agents data initially
 loadAgents();
 
+// Serve the API
 serve({
     async fetch(request) {
         const url = new URL(request.url);
         const path = url.pathname;
-        const query = url.searchParams;
+
+        // Validate API key for all protected routes
+        if (path !== "/ping" && path !== "/api/v1/docs" && path !== "/generate-api-key") {
+            if (!(await validateApiKey(request))) {
+                return jsonResponse({ success: false, message: "Invalid or missing API key" }, 403);
+            }
+        }
 
         // Home route
         if (path === "/") {
@@ -59,13 +99,25 @@ serve({
             });
         }
 
-        // GET all photos from all agents
-        if (path === "/api/v1/agents/photos") {
-            const allPhotos = agents.flatMap((agent) => agent.photos);
-            return jsonResponse({ success: true, data: allPhotos });
+        // Get all agents
+        if (path === "/api/v1/agents") {
+            return jsonResponse({ success: true, data: agents });
         }
 
-        // GET photos by agent ID
+        // Get agent by ID
+        const matchAgentById = path.match(/^\/api\/v1\/agents\/(\d+)$/);
+        if (matchAgentById) {
+            const agentId = parseInt(matchAgentById[1]);
+            const agent = agents.find((a) => a.id === agentId);
+
+            if (!agent) {
+                return jsonResponse({ success: false, message: "Agent not found" }, 404);
+            }
+
+            return jsonResponse({ success: true, data: agent });
+        }
+
+        // Get photos by agent ID
         const matchPhotosById = path.match(/^\/api\/v1\/agents\/(\d+)\/photos$/);
         if (matchPhotosById) {
             const agentId = parseInt(matchPhotosById[1]);
@@ -78,39 +130,10 @@ serve({
             return jsonResponse({ success: true, data: agent.photos });
         }
 
-        // All agents
-        if (path === "/api/v1/agents") {
-            return jsonResponse({ success: true, data: agents });
-        }
-
-        // Single agent by ID
-        const match = path.match(/^\/api\/v1\/agents\/(\d+)$/);
-        if (match) {
-            const agentId = parseInt(match[1]);
-            const agent = agents.find((a) => a.id === agentId);
-
-            if (!agent) {
-                return jsonResponse({ success: false, message: "Agent not found" }, 404);
-            }
-
-            return jsonResponse({ success: true, data: agent });
-        }
-
-        // Search for agent by name
-        if (path === "/api/v1/agents/search") {
-            const searchTerm = query.get("q");
-            if (!searchTerm) {
-                return jsonResponse({ success: false, message: "Missing 'q' parameter" }, 400);
-            }
-
-            const filteredAgents = agents.filter((agent) =>
-                agent.name.toLowerCase().includes(searchTerm.toLowerCase())
-            );
-            return jsonResponse({ success: true, data: filteredAgents });
-        }
-
-        if (path === "/ping") {
-            return new Response("pong");
+        // Get all photos from all agents
+        if (path === "/api/v1/agents/photos") {
+            const allPhotos = agents.flatMap((agent) => agent.photos);
+            return jsonResponse({ success: true, data: allPhotos });
         }
 
         // Filter agents by role
@@ -142,6 +165,17 @@ serve({
             return jsonResponse({ success: true, data: duelists });
         }
 
+        // Generate a new API key
+        if (path === "/generate-api-key") {
+            const adminKey = request.headers.get("x-admin-key");
+            if (adminKey !== "your-secure-admin-key") {
+                return jsonResponse({ success: false, message: "Unauthorized" }, 403);
+            }
+
+            const newApiKey = generateApiKey();
+            await saveApiKey(newApiKey);
+            return jsonResponse({ success: true, apiKey: newApiKey });
+        }
 
         // Documentation route
         if (path === "/api/v1/docs") {
@@ -153,11 +187,13 @@ serve({
                         "/api/v1/agents/{id}": "Get details of a specific agent by ID",
                         "/api/v1/agents/photos": "Get photos from all agents",
                         "/api/v1/agents/{id}/photos": "Get photos for a specific agent by ID",
-                        "/api/v1/agents/search?q={searchTerm}": "Search for an agent by name",
-                        "/role/sentinel": "Get all Sentinel agents",
-                        "/role/initiator": "Get all Initiator agents",
-                        "/role/controller": "Get all Controller agents",
-                        "/role/duelist": "Get all Duelist agents",
+                        "Roles Only": {
+                            "/role/sentinel": "Get all Sentinel agents",
+                            "/role/initiator": "Get all Initiator agents",
+                            "/role/controller": "Get all Controller agents",
+                            "/role/duelist": "Get all Duelist agents",
+                        },
+                        "/generate-api-key": "Generate a new API key (requires admin key)",
                         "/ping": "Check if the server is running",
                     },
                     example: {
@@ -168,30 +204,20 @@ serve({
                         search_agent: "/api/v1/agents/search?q=jett",
                         sentinels: "/role/sentinel",
                         duelists: "/role/duelist",
+                        generate_key: "/generate-api-key",
                         server_ping: "/ping",
                     },
                 },
             });
         }
 
+        // Ping route
+        if (path === "/ping") {
+            return new Response("pong");
+        }
 
         // 404 for unmatched routes
         return jsonResponse({ success: false, message: "Endpoint not found" }, 404);
     },
     port: parseInt(process.env.PORT || "5000"),
 });
-
-// Extend globalThis to include count
-declare global {
-    var count: number;
-}
-
-// Log port only once when the server starts
-if (globalThis.count === 1) {
-    console.log(`Server is running on port ${process.env.PORT || "3000"}`);
-}
-
-// Initialize the counter
-globalThis.count = globalThis.count || 0;
-globalThis.count++;
-console.log(`Server reloaded ${globalThis.count} time(s)`);
